@@ -1,8 +1,257 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Alert Triage Study</title>
-<style>:root{--bg:#f7f7f5;--ink:#1d1d1b;--muted:#6b6b66}@media (prefers-color-scheme:dark){:root{--bg:#161615;--ink:#ecebe6;--muted:#a3a29b}}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}main{max-width:640px;margin:0 auto;padding:48px 16px}</style></head>
-<body><main><h1>Alert triage study</h1>
-<p>Please use the personal link the researcher sent you.</p>
-<p class="muted" style="color:var(--muted)">Vui lòng dùng đường link riêng mà nghiên cứu viên đã gửi cho bạn.</p></main></body></html>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--muted:#6b6b66;--line:#e2e1dc;--accent:#2f5bd3;--up:#b3261e;--down:#1f7a4d;--in:#2f5bd3;--out:#c25e00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#20201e;--ink:#ecebe6;--muted:#a3a29b;--line:#36352f;--accent:#7a9bff;--up:#ff8a80;--down:#6fd3a0;--in:#7a9bff;--out:#ffb366}}
+:root[data-theme="dark"]{--bg:#161615;--card:#20201e;--ink:#ecebe6;--muted:#a3a29b;--line:#36352f;--accent:#7a9bff;--up:#ff8a80;--down:#6fd3a0;--in:#7a9bff;--out:#ffb366}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:0 0 8px}.muted{color:var(--muted)}
+.risk{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;justify-content:space-between}
+ul.reasons{list-style:none;padding:0;margin:8px 0}ul.reasons li{padding:6px 0;border-top:1px solid var(--line)}
+.tag{font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;margin-right:8px;border:1px solid currentColor;white-space:nowrap}
+.tag.up{color:var(--up)}.tag.down{color:var(--down)}
+button{font:inherit;padding:10px 18px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.sel{background:var(--accent);border-color:var(--accent);color:#fff}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.4;cursor:default}.btns{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.lang{display:flex;gap:6px;justify-content:flex-end;margin-bottom:12px}.lang button{padding:4px 12px;font-size:14px}
+input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+table.tx{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+table.tx th,table.tx td{text-align:left;padding:4px 6px;border-top:1px solid var(--line)}table.tx .num{text-align:right}
+.txwrap{max-height:280px;overflow:auto}
+svg{width:100%;height:auto}svg text{fill:var(--ink);font-size:11px}.progress{font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body><main id="app"></main>
+<script>
+// Card data per counterbalancing group, fetched only after the group is known, so the page source
+// never holds the explanations of the set a participant reviews without them.
+const DATA = {"odd": "data/odd-143dfb52.json", "even": "data/even-9e338841.json"};
+const KEY = "mule-study-log";
+
+const STR = {
+  en: {
+    title: "Alert triage study",
+    intro: "You will review 40 alerts raised by a mule-account detector on synthetic bank data, in two blocks of 20. For each alert, decide whether to <b>escalate</b> or <b>dismiss</b> the account and rate your confidence. Participation is voluntary, you can stop at any time, and your name is recorded only to tell your responses apart. It is seen only by the research team and removed before analysis.",
+    pid: "Your full name:",
+    consent: "I have read the information above and agree to take part.",
+    cont: "Continue",
+    badPid: "Please enter your full name.",
+    loadFail: "The alerts could not be loaded. Check your internet connection and reload the page.",
+    needConsent: "Please tick the consent box to continue.",
+    briefing: "Briefing",
+    mule: "A <b>money mule</b> is an account used to pass illicit funds along: it receives money and quickly sends most of it on to other accounts, instead of being where the money starts or ends up.",
+    example: "Worked example",
+    exampleText: "An account receives $48,000 from six unrelated accounts in the morning and, within three hours, sends $45,500 (95%) to two accounts it has never paid before. It has no other activity that day. This pattern of fan-in, fast onward transfer and high pass-through is typical of a mule, so you would likely <b>escalate</b>. An account that receives a salary and makes many small card payments to shops is typical legitimate activity and you would likely <b>dismiss</b> it.",
+    rankNote: "Each day the detector raises its 100 highest-scoring accounts; #1 is the account it is most sure about. The detector is not always right. Some alerts are legitimate accounts. Use your own judgement.",
+    start1: "Start block 1",
+    progress: (b, i, n) => `Block ${b} of 2 · alert ${i} of ${n}`,
+    account: "Account",
+    rank: "Model rank today",
+    of100: "of 100 alerts",
+    txToday: "Transactions that day",
+    why: "Why the model scored this account",
+    up: "raises risk", down: "lowers risk",
+    cpPicture: "Counterparty picture",
+    legend: (hidden) => `<span style="color:var(--in)">■</span> incoming &nbsp; <span style="color:var(--out)">■</span> outgoing; line width ∝ amount${hidden ? ` · ${hidden} smaller counterparties not shown` : ""}. This picture shows what the account did, not why it was scored.`,
+    th: ["Time", "Direction", "Counterparty", "Amount (USD)", "Currency", "Format"],
+    received: "received from", sent: "sent to",
+    moreTx: (n) => `${n} further transactions not shown.`,
+    decision: "Your decision",
+    escalate: "Escalate", dismiss: "Dismiss",
+    confidence: "Confidence (1 = guessing, 5 = certain)",
+    next: "Next",
+    blockDone: "Block 1 complete",
+    nextBlock: (expl) => `Take a short break if you like. In the next block the alert cards ${expl ? "will also show the reasons behind the score and a picture of the account's counterparties" : "will show the rank and the transactions only"}.`,
+    start2: "Start block 2",
+    thanks: "Thank you",
+    thanksText: "You have finished. Please download your responses and send the file to the researcher.",
+    download: "Download responses",
+    graphLabel: "One-hop transaction neighbourhood",
+    locale: "en-US",
+    formats: {}, currencies: {}
+  },
+  vi: {
+    title: "Nghiên cứu phân loại cảnh báo",
+    intro: "Bạn sẽ xem 40 cảnh báo do một mô hình phát hiện tài khoản mule đưa ra trên dữ liệu ngân hàng tổng hợp (synthetic), chia thành hai phần, mỗi phần 20 cảnh báo. Với mỗi cảnh báo, hãy quyết định <b>chuyển xử lý (escalate)</b> hay <b>bỏ qua (dismiss)</b> tài khoản, và đánh giá mức độ tự tin của bạn. Việc tham gia là tự nguyện, bạn có thể dừng bất cứ lúc nào, và tên của bạn chỉ được ghi lại để phân biệt các câu trả lời. Chỉ nhóm nghiên cứu xem được tên, và tên sẽ được xoá trước khi phân tích.",
+    pid: "Họ và tên của bạn:",
+    consent: "Tôi đã đọc thông tin trên và đồng ý tham gia.",
+    cont: "Tiếp tục",
+    badPid: "Vui lòng nhập họ và tên.",
+    loadFail: "Không tải được cảnh báo. Hãy kiểm tra kết nối mạng và tải lại trang.",
+    needConsent: "Vui lòng đánh dấu ô đồng ý để tiếp tục.",
+    briefing: "Hướng dẫn",
+    mule: "<b>Tài khoản mule (money mule)</b> là tài khoản được dùng để chuyển tiếp tiền bất hợp pháp: nó nhận tiền rồi nhanh chóng chuyển phần lớn số tiền đó sang tài khoản khác, thay vì là nơi tiền xuất phát hoặc nơi tiền đến cuối cùng.",
+    example: "Ví dụ minh hoạ",
+    exampleText: "Một tài khoản nhận $48.000 từ sáu tài khoản không liên quan vào buổi sáng, và trong vòng ba giờ chuyển đi $45.500 (95%) cho hai tài khoản mà nó chưa từng chuyển tiền trước đó. Trong ngày, tài khoản không có hoạt động nào khác. Mẫu hình nhận từ nhiều nguồn, chuyển tiếp nhanh và tỉ lệ chuyển đi cao này là điển hình của mule, nên bạn nhiều khả năng sẽ <b>chuyển xử lý</b>. Một tài khoản nhận lương và có nhiều khoản thanh toán thẻ nhỏ tại cửa hàng là hoạt động hợp pháp điển hình, nên bạn nhiều khả năng sẽ <b>bỏ qua</b>.",
+    rankNote: "Mỗi ngày mô hình đưa ra 100 tài khoản có điểm cao nhất; hạng #1 là tài khoản mà mô hình chắc chắn nhất. Mô hình không phải lúc nào cũng đúng: một số cảnh báo là tài khoản hợp pháp. Hãy dùng phán đoán của chính bạn.",
+    start1: "Bắt đầu phần 1",
+    progress: (b, i, n) => `Phần ${b}/2 · cảnh báo ${i}/${n}`,
+    account: "Tài khoản",
+    rank: "Hạng của mô hình hôm nay",
+    of100: "trong 100 cảnh báo",
+    txToday: "Giao dịch trong ngày",
+    why: "Vì sao mô hình chấm điểm tài khoản này",
+    up: "tăng rủi ro", down: "giảm rủi ro",
+    cpPicture: "Sơ đồ đối tác",
+    legend: (hidden) => `<span style="color:var(--in)">■</span> tiền vào &nbsp; <span style="color:var(--out)">■</span> tiền ra; độ dày đường ∝ số tiền${hidden ? ` · ${hidden} đối tác nhỏ hơn không hiển thị` : ""}. Hình này cho thấy tài khoản đã làm gì, không giải thích vì sao nó được chấm điểm.`,
+    th: ["Giờ", "Chiều", "Đối tác", "Số tiền (USD)", "Tiền tệ", "Hình thức"],
+    received: "nhận từ", sent: "chuyển cho",
+    moreTx: (n) => `${n} giao dịch khác không hiển thị.`,
+    decision: "Quyết định của bạn",
+    escalate: "Chuyển xử lý", dismiss: "Bỏ qua",
+    confidence: "Mức độ tự tin (1 = đoán, 5 = chắc chắn)",
+    next: "Tiếp",
+    blockDone: "Đã xong phần 1",
+    nextBlock: (expl) => `Bạn có thể nghỉ một chút. Ở phần tiếp theo, thẻ cảnh báo ${expl ? "sẽ hiện thêm các lý do đằng sau điểm số và sơ đồ đối tác của tài khoản" : "chỉ hiện hạng và danh sách giao dịch"}.`,
+    start2: "Bắt đầu phần 2",
+    thanks: "Cảm ơn bạn",
+    thanksText: "Bạn đã hoàn thành. Vui lòng tải file câu trả lời và gửi cho nghiên cứu viên.",
+    download: "Tải câu trả lời",
+    graphLabel: "Các giao dịch trực tiếp của tài khoản",
+    locale: "vi-VN",
+    formats: {"Cheque": "Séc", "Credit Card": "Thẻ tín dụng", "Cash": "Tiền mặt", "Reinvestment": "Tái đầu tư", "Wire": "Chuyển khoản điện tử"},
+    currencies: {"US Dollar": "Đô la Mỹ", "Euro": "Euro", "Yuan": "Nhân dân tệ", "Yen": "Yên Nhật", "UK Pound": "Bảng Anh",
+      "Ruble": "Rúp", "Swiss Franc": "Franc Thụy Sĩ", "Australian Dollar": "Đô la Úc", "Canadian Dollar": "Đô la Canada",
+      "Mexican Peso": "Peso Mexico", "Brazil Real": "Real Brazil", "Saudi Riyal": "Riyal Ả Rập Xê Út"}
+  }
+};
+
+const app = document.getElementById("app");
+let state = {lang: "en", pid: null, group: null, blocks: [], b: 0, i: 0, log: [], choice: null, conf: null, t0: 0, tDecide: null};
+const T = () => STR[state.lang];
+
+function save(){ try{ localStorage.setItem(KEY+":"+state.pid, JSON.stringify(state.log)); }catch(e){} }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function money(v){ return "$"+Math.round(v).toLocaleString(T().locale); }
+
+// same name -> same id and same group, whatever spacing or case was typed
+function normName(s){ return s.normalize("NFC").trim().replace(/\s+/g," "); }
+async function groupOf(name){
+  const bytes = new TextEncoder().encode(name.toLocaleLowerCase("vi"));
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return h[0] % 2 === 1 ? "odd" : "even";
+}
+function fileSlug(name){
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[đĐ]/g,"d").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"") || "participant";
+}
+
+function setLang(l){
+  state.lang = l;
+  document.documentElement.lang = l;
+  document.title = T().title;
+}
+
+function start(){
+  const t = T();
+  app.innerHTML = `<div class="lang"><button data-l="en" class="${state.lang==="en"?"sel":""}">English</button><button data-l="vi" class="${state.lang==="vi"?"sel":""}">Tiếng Việt</button></div>
+  <div class="panel"><h1>${t.title}</h1><p>${t.intro}</p>
+  <p><label>${t.pid} <input id="pid" autocomplete="name" style="width:100%;max-width:360px" value="${esc(state.pid || "")}"></label></p>
+  <p><label><input type="checkbox" id="consent"> ${t.consent}</label></p>
+  <button class="primary" id="go">${t.cont}</button></div>`;
+  app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{ state.pid = document.getElementById("pid").value.trim(); setLang(b.dataset.l); start(); });
+  document.getElementById("go").onclick = async ()=>{
+    const name = normName(document.getElementById("pid").value);
+    if(name.length < 2){ alert(t.badPid); return; }
+    if(!document.getElementById("consent").checked){ alert(t.needConsent); return; }
+    state.pid = name;
+    state.group = await groupOf(name);  // odd: set A without explanations first; even: set B first
+    let cards;
+    try{
+      const r = await fetch(DATA[state.group], {cache:"no-store"});
+      if(!r.ok) throw new Error(r.status);
+      cards = await r.json();
+    }catch(e){ alert(t.loadFail); return; }
+    const A = cards.filter(c=>c.set==="A"), B = cards.filter(c=>c.set==="B");
+    state.blocks = state.group==="odd" ? [{cards:A, cond:"C0"},{cards:B, cond:"C1"}] : [{cards:B, cond:"C0"},{cards:A, cond:"C1"}];
+    briefing();
+  };
+}
+
+function briefing(){
+  const t = T();
+  app.innerHTML = `<div class="panel"><h1>${t.briefing}</h1><p>${t.mule}</p>
+  <h2>${t.example}</h2><p class="muted">${t.exampleText}</p><p>${t.rankNote}</p>
+  <button class="primary" id="go">${t.start1}</button></div>`;
+  document.getElementById("go").onclick = ()=>{ state.b=0; state.i=0; show(); };
+}
+
+function txTable(c){
+  const t = T();
+  return `<div class="txwrap"><table class="tx"><thead><tr>${t.th.map((h,k)=>`<th${k===3?' class="num"':""}>${h}</th>`).join("")}</tr></thead><tbody>${
+    c.transactions.map(x=>`<tr><td>${x.time}</td><td>${x.dir==="in"?t.received:t.sent}</td><td>${esc(x.cp)}</td><td class="num">${money(x.amount)}</td><td>${esc(t.currencies[x.currency]||x.currency)}</td><td>${esc(t.formats[x.format]||x.format)}</td></tr>`).join("")
+  }</tbody></table></div>${c.more_transactions?`<p class="muted" style="font-size:13px">${t.moreTx(c.more_transactions)}</p>`:""}`;
+}
+
+function graph(c){
+  const n = c.edges.length, W=520, H=320, cx=W/2, cy=H/2, R=120;
+  const max = Math.max(...c.edges.map(e=>e.amount), 1);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(T().graphLabel)}">
+  <defs><marker id="ai" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--in)"/></marker>
+  <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--out)"/></marker></defs>`;
+  c.edges.forEach((e,k)=>{
+    const a = -Math.PI/2 + 2*Math.PI*k/Math.max(n,1), x = cx+R*Math.cos(a), y = cy+R*Math.sin(a);
+    const w = 1 + 5*Math.sqrt(e.amount/max), inn = e.dir==="in";
+    const [x1,y1,x2,y2] = inn ? [x,y,cx,cy] : [cx,cy,x,y];
+    const sh = (p,q,f)=>p+(q-p)*f;
+    s += `<line x1="${sh(x1,x2,.12)}" y1="${sh(y1,y2,.12)}" x2="${sh(x1,x2,.86)}" y2="${sh(y1,y2,.86)}" stroke="var(--${inn?"in":"out"})" stroke-width="${w}" marker-end="url(#a${inn?"i":"o"})"/>`;
+    s += `<circle cx="${x}" cy="${y}" r="6" fill="var(--muted)"/><text x="${x}" y="${y+(y<cy?-12:20)}" text-anchor="middle">${esc(e.cp)} · ${money(e.amount)}</text>`;
+  });
+  s += `<circle cx="${cx}" cy="${cy}" r="14" fill="var(--accent)"/><text x="${cx}" y="${cy+32}" text-anchor="middle" font-weight="700">${esc(c.account)}</text></svg>`;
+  return s + `<p class="muted" style="font-size:13px">${T().legend(c.hidden_edges)}</p>`;
+}
+
+function show(){
+  const t = T(), blk = state.blocks[state.b], c = blk.cards[state.i];
+  state.choice=null; state.conf=null; state.tDecide=null; state.t0=performance.now();
+  const expl = blk.cond==="C1";
+  app.innerHTML = `<div class="progress">${t.progress(state.b+1, state.i+1, blk.cards.length)}</div>
+  <div class="panel"><div class="row"><div><div class="muted">${t.account}</div><h2>${esc(c.account)}</h2><div class="muted">${c.day}</div></div>
+  <div><div class="muted">${t.rank}</div><div class="risk">#${c.rank} <span class="muted" style="font-size:16px;font-weight:400">${t.of100}</span></div></div></div>
+  <h2 style="margin-top:12px">${t.txToday}</h2>${txTable(c)}
+  ${expl ? `<h2 style="margin-top:12px">${t.why}</h2><ul class="reasons">${c.reasons.map(r=>`<li><span class="tag ${r.up?"up":"down"}">${r.up?t.up:t.down}</span>${esc(r.text[state.lang])}</li>`).join("")}</ul>
+  <h2>${t.cpPicture}</h2>${graph(c)}` : ""}
+  </div>
+  <div class="panel"><h2>${t.decision}</h2>
+  <div class="btns"><button data-d="escalate">${t.escalate}</button><button data-d="dismiss">${t.dismiss}</button></div>
+  <div class="muted" style="margin-top:8px">${t.confidence}</div>
+  <div class="btns" id="conf">${[1,2,3,4,5].map(v=>`<button data-c="${v}">${v}</button>`).join("")}</div>
+  <button class="primary" id="next" disabled>${t.next}</button></div>`;
+  app.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{ state.choice=b.dataset.d; state.tDecide=performance.now();
+    app.querySelectorAll("[data-d]").forEach(x=>x.classList.toggle("sel",x===b)); ready(); });
+  app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ state.conf=+b.dataset.c;
+    app.querySelectorAll("[data-c]").forEach(x=>x.classList.toggle("sel",x===b)); ready(); });
+  document.getElementById("next").onclick = record;
+}
+function ready(){ document.getElementById("next").disabled = !(state.choice && state.conf); }
+
+function record(){
+  const t = T(), blk = state.blocks[state.b], c = blk.cards[state.i];
+  state.log.push({pid:state.pid, group:state.group, lang:state.lang, block:state.b+1, cond:blk.cond, set:c.set, card:c.id, decision:state.choice, confidence:state.conf,
+    seconds_to_decision:+((state.tDecide-state.t0)/1000).toFixed(2), seconds_total:+((performance.now()-state.t0)/1000).toFixed(2),
+    rank:c.rank, recorded_at:new Date().toISOString()});
+  save();
+  state.i++;
+  if(state.i < blk.cards.length) return show();
+  if(state.b===0){ state.b=1; state.i=0;
+    app.innerHTML = `<div class="panel"><h1>${t.blockDone}</h1><p>${t.nextBlock(state.blocks[1].cond==="C1")}</p><button class="primary" id="go">${t.start2}</button></div>`;
+    document.getElementById("go").onclick = show; return; }
+  done();
+}
+
+function done(){
+  const t = T(), blob = new Blob([JSON.stringify(state.log,null,1)],{type:"application/json"});
+  app.innerHTML = `<div class="panel"><h1>${t.thanks}</h1><p>${t.thanksText}</p>
+  <a download="study_${fileSlug(state.pid)}.json" href="${URL.createObjectURL(blob)}"><button class="primary">${t.download}</button></a></div>`;
+}
+
+setLang((navigator.language||"en").toLowerCase().startsWith("vi") ? "vi" : "en");
+start();
+</script>
+</body></html>
